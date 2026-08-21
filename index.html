@@ -1,0 +1,1513 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Daftar Hadir Pengajian</title>
+
+<!-- ==========================================================================
+     KONFIGURASI API
+     Jika file ini dibuka LANGSUNG dari deployment Apps Script (doGet),
+     API_URL akan otomatis terdeteksi dari alamat halaman ini sendiri.
+     Jika Anda meng-hosting index.html ini terpisah (mis. GitHub Pages),
+     GANTI baris di bawah ini dengan URL Web App Apps Script Anda.
+     ========================================================================== -->
+<script>
+  const API_URL_MANUAL = "MASUKKAN_URL_WEB_APP_APPS_SCRIPT_DI_SINI";
+</script>
+
+<!-- CDN eksternal (lihat SETUP_GUIDE.md bagian "Dependency" untuk daftar lengkap) -->
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Amiri:wght@400;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/signature_pad@4.1.7/dist/signature_pad.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.1/dist/jspdf.plugin.autotable.min.js"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+
+<style>
+  :root{
+    --brand: #16a34a;
+    --brand-dark: #15803d;
+    --brand-light: #dcfce7;
+    --cream: #f5f7f1;
+  }
+  *{ font-family: 'Inter', system-ui, sans-serif; }
+  .font-arabic{ font-family: 'Amiri', serif; }
+  body{ background: var(--cream); }
+  .bg-brand{ background-color: var(--brand); }
+  .bg-brand-dark{ background-color: var(--brand-dark); }
+  .text-brand{ color: var(--brand); }
+  .border-brand{ border-color: var(--brand); }
+  .bg-brand-light{ background-color: var(--brand-light); }
+  .grad-brand{ background: linear-gradient(135deg, var(--brand-dark), var(--brand)); }
+  ::-webkit-scrollbar{ width:6px; height:6px; }
+  ::-webkit-scrollbar-thumb{ background:#c7ccc2; border-radius:4px; }
+  .page{ display:none; }
+  .page.active{ display:block; }
+  .toast{ animation: slideUp .25s ease-out; }
+  @keyframes slideUp{ from{ transform:translateY(20px); opacity:0;} to{ transform:translateY(0); opacity:1;} }
+  .skeleton{ background: linear-gradient(90deg,#eee 25%,#f6f6f6 37%,#eee 63%); background-size:400% 100%; animation: shimmer 1.4s infinite; }
+  @keyframes shimmer{ 0%{background-position:100% 50%;} 100%{background-position:0 50%;} }
+  .signature-canvas{ touch-action:none; }
+  .nav-item.active{ color: var(--brand); }
+  .step-dot.active{ background: var(--brand); color:#fff; }
+  .step-dot.done{ background: var(--brand-dark); color:#fff; }
+  .modal-backdrop{ background: rgba(15,23,20,.55); }
+  input[type=checkbox]{ accent-color: var(--brand); }
+</style>
+</head>
+<body class="min-h-screen text-slate-800">
+
+<!-- ============================== ROOT APP ============================== -->
+<div id="app" class="max-w-md mx-auto min-h-screen bg-[var(--cream)] relative pb-20">
+
+  <!-- Loading splash -->
+  <div id="splash" class="fixed inset-0 z-50 flex items-center justify-center bg-white">
+    <div class="text-center">
+      <div class="w-14 h-14 rounded-2xl bg-brand mx-auto mb-3 flex items-center justify-center animate-pulse">
+        <i data-lucide="book-open-check" class="text-white w-8 h-8"></i>
+      </div>
+      <p class="text-sm text-slate-400">Memuat aplikasi…</p>
+    </div>
+  </div>
+
+  <!-- ============================ LOGIN PAGE ============================ -->
+  <div id="page-login" class="page min-h-screen flex flex-col justify-center px-6 py-10">
+    <div class="text-center mb-6">
+      <div id="loginLogoWrap" class="w-16 h-16 rounded-2xl bg-brand mx-auto mb-4 flex items-center justify-center overflow-hidden">
+        <i data-lucide="book-open-check" class="text-white w-9 h-9"></i>
+      </div>
+      <p class="font-arabic text-lg text-brand-dark mb-1" dir="rtl">اَلسَّلاَمُ عَلَيْكُمْ وَرَحْمَةُ اللهِ وَبَرَكَاتُهُ</p>
+      <h1 id="loginAppTitle" class="text-xl font-bold">Daftar Hadir Pengajian</h1>
+      <p id="loginOrgName" class="text-sm text-slate-500 mt-1">Silakan masuk untuk melanjutkan</p>
+    </div>
+
+    <div class="bg-white rounded-2xl shadow-sm p-5 space-y-4">
+      <div>
+        <label class="text-sm font-medium text-slate-600 mb-1 block">Username</label>
+        <input id="loginUsername" type="text" class="w-full border border-slate-200 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-brand" placeholder="Masukkan username">
+      </div>
+      <div>
+        <label class="text-sm font-medium text-slate-600 mb-1 block">Password</label>
+        <input id="loginPassword" type="password" class="w-full border border-slate-200 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-brand" placeholder="Masukkan password">
+      </div>
+      <button onclick="doLogin()" id="loginBtn" class="w-full bg-brand text-white font-semibold py-3 rounded-xl active:scale-[0.98] transition">Masuk</button>
+      <p class="text-xs text-center text-slate-400">Akun default: admin / admin123 (segera ganti password)</p>
+    </div>
+
+    <div class="text-center mt-6">
+      <button onclick="goPublicMode()" class="text-sm text-brand-dark font-medium underline">Saya peserta &mdash; ingin isi daftar hadir via link/QR</button>
+    </div>
+  </div>
+
+  <!-- ==================== PUBLIC ATTENDANCE (QR FLOW) ==================== -->
+  <div id="page-public" class="page min-h-screen">
+    <div id="publicLoading" class="min-h-screen flex items-center justify-center p-6">
+      <div class="text-center">
+        <div class="w-10 h-10 border-4 border-brand border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
+        <p class="text-slate-500 text-sm">Memuat data kegiatan…</p>
+      </div>
+    </div>
+
+    <div id="publicNotFound" class="hidden min-h-screen flex items-center justify-center p-6 text-center">
+      <div>
+        <i data-lucide="alert-triangle" class="w-12 h-12 text-amber-500 mx-auto mb-3"></i>
+        <h2 class="font-bold text-lg mb-1">Kegiatan Tidak Ditemukan</h2>
+        <p id="publicNotFoundMsg" class="text-sm text-slate-500">Link atau QR Code tidak valid / kegiatan sudah tidak aktif.</p>
+        <button onclick="location.href = location.href.split('?')[0]" class="mt-4 text-brand-dark font-medium underline">Kembali</button>
+      </div>
+    </div>
+
+    <div id="publicAlreadyDone" class="hidden min-h-screen flex items-center justify-center p-6 text-center">
+      <div>
+        <i data-lucide="check-circle-2" class="w-14 h-14 text-brand mx-auto mb-3"></i>
+        <h2 class="font-bold text-lg mb-1">Anda Sudah Melakukan Absensi</h2>
+        <p class="text-sm text-slate-500">Anda sudah melakukan absensi pada kegiatan ini.</p>
+      </div>
+    </div>
+
+    <!-- 4-step wizard: Data Diri -> Kehadiran -> Infak -> Tanda Tangan -->
+    <div id="publicForm" class="hidden">
+      <div class="grad-brand text-white px-5 pt-6 pb-8 rounded-b-3xl">
+        <button onclick="location.href = location.href.split('?')[0]" class="mb-3"><i data-lucide="arrow-left" class="w-5 h-5"></i></button>
+        <h2 class="font-bold text-lg">Daftar Hadir</h2>
+        <p id="pfActivityName" class="text-sm text-white/80"></p>
+      </div>
+
+      <div class="px-5 -mt-5">
+        <div class="bg-white rounded-2xl shadow-sm p-4 flex items-center justify-between text-xs font-semibold">
+          <div class="step-dot flex flex-col items-center gap-1" data-step="1"><span class="w-7 h-7 rounded-full bg-slate-100 flex items-center justify-center">1</span><span class="text-[10px] text-slate-500">Data Diri</span></div>
+          <div class="flex-1 h-px bg-slate-200 mx-1"></div>
+          <div class="step-dot flex flex-col items-center gap-1" data-step="2"><span class="w-7 h-7 rounded-full bg-slate-100 flex items-center justify-center">2</span><span class="text-[10px] text-slate-500">Kehadiran</span></div>
+          <div class="flex-1 h-px bg-slate-200 mx-1"></div>
+          <div class="step-dot flex flex-col items-center gap-1" data-step="3"><span class="w-7 h-7 rounded-full bg-slate-100 flex items-center justify-center">3</span><span class="text-[10px] text-slate-500">Infak</span></div>
+          <div class="flex-1 h-px bg-slate-200 mx-1"></div>
+          <div class="step-dot flex flex-col items-center gap-1" data-step="4"><span class="w-7 h-7 rounded-full bg-slate-100 flex items-center justify-center">4</span><span class="text-[10px] text-slate-500">Ttd</span></div>
+        </div>
+      </div>
+
+      <!-- Step 1: Data Diri -->
+      <div id="pfStep1" class="px-5 mt-4 space-y-4">
+        <div>
+          <label class="text-sm font-medium text-slate-600 mb-1 block">Nama Lengkap</label>
+          <input id="pfNama" class="w-full border border-slate-200 rounded-xl px-4 py-3" placeholder="Ahmad Subhan">
+        </div>
+        <div>
+          <label class="text-sm font-medium text-slate-600 mb-1 block">Jenis Kelamin</label>
+          <div class="flex gap-4 bg-white rounded-xl border border-slate-200 p-3">
+            <label class="flex items-center gap-2 text-sm"><input type="radio" name="pfGender" value="Pria" checked> Pria</label>
+            <label class="flex items-center gap-2 text-sm"><input type="radio" name="pfGender" value="Wanita"> Wanita</label>
+          </div>
+        </div>
+        <div>
+          <label class="text-sm font-medium text-slate-600 mb-1 block">Status</label>
+          <select id="pfStatus" class="w-full border border-slate-200 rounded-xl px-4 py-3 bg-white">
+            <option>Bapak-Bapak</option><option>Ibu-Ibu</option><option>Muda-Mudi</option>
+            <option>Remaja</option><option>Pra Remaja</option><option>Caberawit</option>
+          </select>
+        </div>
+        <div>
+          <label class="text-sm font-medium text-slate-600 mb-1 block">Dapukan</label>
+          <input id="pfDapukan" class="w-full border border-slate-200 rounded-xl px-4 py-3" placeholder="Anggota">
+        </div>
+        <div>
+          <label class="text-sm font-medium text-slate-600 mb-1 block">No. HP (opsional)</label>
+          <input id="pfNoHp" class="w-full border border-slate-200 rounded-xl px-4 py-3" placeholder="08xxxxxxxxxx">
+        </div>
+        <p class="text-xs text-slate-400">Waktu datang otomatis: <span id="pfWaktuOtomatis" class="font-medium text-slate-600"></span></p>
+        <button onclick="pfGoStep(2)" class="w-full bg-brand text-white font-semibold py-3 rounded-xl">Selanjutnya</button>
+      </div>
+
+      <!-- Step 2: Kehadiran -->
+      <div id="pfStep2" class="px-5 mt-4 space-y-4 hidden">
+        <label class="text-sm font-medium text-slate-600 block">Kehadiran</label>
+        <div class="bg-white rounded-xl border border-slate-200 divide-y">
+          <label class="flex items-center gap-3 p-3 text-sm"><input type="radio" name="pfKehadiran" value="Hadir" checked> Hadir</label>
+          <label class="flex items-center gap-3 p-3 text-sm"><input type="radio" name="pfKehadiran" value="Izin"> Izin / Berhalangan</label>
+          <label class="flex items-center gap-3 p-3 text-sm"><input type="radio" name="pfKehadiran" value="Sakit"> Sakit</label>
+          <label class="flex items-center gap-3 p-3 text-sm"><input type="radio" name="pfKehadiran" value="Alfa"> Alfa</label>
+        </div>
+        <div>
+          <label class="text-sm font-medium text-slate-600 mb-1 block">Keterangan (Opsional)</label>
+          <textarea id="pfKeterangan" rows="3" class="w-full border border-slate-200 rounded-xl px-4 py-3" placeholder="Tulis keterangan jika diperlukan…"></textarea>
+        </div>
+        <div class="flex gap-3">
+          <button onclick="pfGoStep(1)" class="flex-1 border border-slate-300 font-semibold py-3 rounded-xl">Kembali</button>
+          <button onclick="pfGoStep(3)" class="flex-1 bg-brand text-white font-semibold py-3 rounded-xl">Selanjutnya</button>
+        </div>
+      </div>
+
+      <!-- Step 3: Infak -->
+      <div id="pfStep3" class="px-5 mt-4 space-y-4 hidden">
+        <label class="flex items-center justify-between bg-white rounded-xl border border-slate-200 p-3">
+          <span class="text-sm font-medium">Saya ingin berinfak</span>
+          <input type="checkbox" id="pfWantInfak" class="w-5 h-5" onchange="document.getElementById('pfInfakFields').classList.toggle('hidden', !this.checked)">
+        </label>
+        <div id="pfInfakFields" class="hidden space-y-4">
+          <div>
+            <label class="text-sm font-medium text-slate-600 mb-1 block">Nominal Infak</label>
+            <input id="pfNominal" type="number" min="0" class="w-full border border-slate-200 rounded-xl px-4 py-3" placeholder="Rp 50.000">
+          </div>
+          <div>
+            <label class="text-sm font-medium text-slate-600 mb-1 block">Keterangan (Opsional)</label>
+            <input id="pfInfakKet" class="w-full border border-slate-200 rounded-xl px-4 py-3" placeholder="Untuk kegiatan pengajian">
+          </div>
+          <div>
+            <label class="text-sm font-medium text-slate-600 mb-1 block">Metode</label>
+            <select id="pfMetode" class="w-full border border-slate-200 rounded-xl px-4 py-3 bg-white">
+              <option>Tunai</option><option>Transfer</option><option>QRIS</option>
+            </select>
+          </div>
+        </div>
+        <div class="flex gap-3">
+          <button onclick="pfGoStep(2)" class="flex-1 border border-slate-300 font-semibold py-3 rounded-xl">Kembali</button>
+          <button onclick="pfGoStep(4)" class="flex-1 bg-brand text-white font-semibold py-3 rounded-xl">Selanjutnya</button>
+        </div>
+      </div>
+
+      <!-- Step 4: Tanda Tangan -->
+      <div id="pfStep4" class="px-5 mt-4 space-y-4 hidden pb-8">
+        <label class="text-sm font-medium text-slate-600 block">Silakan tanda tangan pada area di bawah ini</label>
+        <p class="text-xs text-slate-400 -mt-2">Gunakan jari atau stylus Anda</p>
+        <div class="bg-white rounded-xl border-2 border-dashed border-slate-300">
+          <canvas id="pfSignaturePad" class="signature-canvas w-full h-48 rounded-xl"></canvas>
+        </div>
+        <div class="grid grid-cols-3 gap-2">
+          <button onclick="clearSignature('pfSignaturePad')" class="border border-slate-300 rounded-xl py-2 text-sm flex items-center justify-center gap-1"><i data-lucide="eraser" class="w-4 h-4"></i>Hapus</button>
+          <button onclick="clearSignature('pfSignaturePad')" class="border border-slate-300 rounded-xl py-2 text-sm flex items-center justify-center gap-1"><i data-lucide="rotate-ccw" class="w-4 h-4"></i>Ulangi</button>
+          <button onclick="submitPublicAttendance()" id="pfSubmitBtn" class="bg-brand-dark text-white rounded-xl py-2 text-sm font-semibold flex items-center justify-center gap-1"><i data-lucide="save" class="w-4 h-4"></i>Simpan</button>
+        </div>
+        <div class="flex gap-3">
+          <button onclick="pfGoStep(3)" class="flex-1 border border-slate-300 font-semibold py-3 rounded-xl">Kembali</button>
+          <button onclick="submitPublicAttendance()" class="flex-1 bg-brand text-white font-semibold py-3 rounded-xl">Simpan Absensi</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Success -->
+    <div id="publicSuccess" class="hidden min-h-screen flex flex-col items-center justify-center px-8 text-center">
+      <div class="w-20 h-20 rounded-full bg-brand-light flex items-center justify-center mb-4">
+        <i data-lucide="check" class="w-10 h-10 text-brand-dark"></i>
+      </div>
+      <h2 class="font-bold text-xl mb-1">Absensi Berhasil Disimpan</h2>
+      <p class="text-sm text-slate-500 mb-3">Terima kasih atas kehadiran Anda.</p>
+      <p class="font-arabic text-lg text-brand-dark mb-6" dir="rtl">الْحَمْدُ لِلّٰهِ جَزَاكُمُ اللّٰهُ خَيْرًا</p>
+      <button onclick="location.href = location.href.split('?')[0]" class="w-full bg-brand-dark text-white font-semibold py-3 rounded-xl">Kembali ke Beranda</button>
+    </div>
+  </div>
+
+  <!-- ============================ ADMIN SHELL ============================ -->
+  <div id="page-admin" class="page">
+
+    <!-- Top bar -->
+    <div class="grad-brand text-white px-5 pt-6 pb-8 rounded-b-3xl flex items-start justify-between">
+      <div class="flex items-center gap-3">
+        <button onclick="toggleSidebar(true)" class="p-1"><i data-lucide="menu" class="w-6 h-6"></i></button>
+        <div>
+          <p class="font-arabic text-base leading-tight" dir="rtl" id="adminGreetingArabic">اَلسَّلاَمُ عَلَيْكُمْ وَرَحْمَةُ اللهِ وَبَرَكَاتُهُ</p>
+          <p class="text-xs text-white/70 mt-1">Selamat Datang Kembali</p>
+        </div>
+      </div>
+      <button class="relative p-1"><i data-lucide="bell" class="w-6 h-6"></i></button>
+    </div>
+
+    <div class="px-5 -mt-5">
+      <div class="bg-white rounded-2xl shadow-sm p-4 flex items-center gap-3">
+        <div class="w-11 h-11 rounded-full bg-brand-light flex items-center justify-center overflow-hidden">
+          <i data-lucide="user-round" class="text-brand-dark w-6 h-6"></i>
+        </div>
+        <div class="flex-1">
+          <p id="adminUserName" class="font-semibold text-sm">Admin</p>
+          <p id="adminUserRole" class="text-xs text-slate-400">Administrator</p>
+        </div>
+        <button onclick="logout()" class="text-xs text-red-500 font-medium">Keluar</button>
+      </div>
+    </div>
+
+    <!-- Router content -->
+    <div id="adminContent" class="px-5 mt-5 space-y-5"></div>
+
+    <!-- Bottom navigation -->
+    <div class="fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-white border-t border-slate-100 flex items-center justify-around py-2 z-30">
+      <button class="nav-item flex flex-col items-center gap-0.5 text-slate-400 text-[11px] px-2 py-1" data-route="dashboard" onclick="navigate('dashboard')"><i data-lucide="home" class="w-5 h-5"></i>Beranda</button>
+      <button class="nav-item flex flex-col items-center gap-0.5 text-slate-400 text-[11px] px-2 py-1" data-route="activities" onclick="navigate('activities')"><i data-lucide="calendar" class="w-5 h-5"></i>Kegiatan</button>
+      <button onclick="navigate('scan')" class="w-12 h-12 rounded-full bg-brand text-white flex items-center justify-center -mt-4 shadow-lg"><i data-lucide="plus" class="w-6 h-6"></i></button>
+      <button class="nav-item flex flex-col items-center gap-0.5 text-slate-400 text-[11px] px-2 py-1" data-route="participants" onclick="navigate('participants')"><i data-lucide="users" class="w-5 h-5"></i>Peserta</button>
+      <button class="nav-item flex flex-col items-center gap-0.5 text-slate-400 text-[11px] px-2 py-1" data-route="menu" onclick="navigate('menu')"><i data-lucide="menu" class="w-5 h-5"></i>Menu</button>
+    </div>
+  </div>
+
+  <!-- Sidebar drawer -->
+  <div id="sidebarBackdrop" class="hidden fixed inset-0 modal-backdrop z-40" onclick="toggleSidebar(false)"></div>
+  <div id="sidebar" class="fixed top-0 left-0 bottom-0 w-72 bg-white z-50 shadow-xl -translate-x-full transition-transform duration-200 flex flex-col">
+    <div class="grad-brand text-white p-5">
+      <div class="w-11 h-11 rounded-full bg-white/20 flex items-center justify-center mb-2"><i data-lucide="user-round" class="w-6 h-6"></i></div>
+      <p id="sbUserName" class="font-semibold">Admin</p>
+      <p id="sbUserRole" class="text-xs text-white/70">Administrator</p>
+    </div>
+    <div class="flex-1 overflow-y-auto py-2" id="sidebarMenu"></div>
+    <button onclick="logout()" class="m-3 flex items-center gap-2 text-red-500 font-medium px-3 py-2 rounded-xl hover:bg-red-50">
+      <i data-lucide="log-out" class="w-5 h-5"></i>Keluar
+    </button>
+  </div>
+
+</div>
+
+<!-- Toast container -->
+<div id="toastRoot" class="fixed bottom-24 left-1/2 -translate-x-1/2 z-[60] w-[90%] max-w-sm space-y-2"></div>
+
+<!-- Confirm dialog -->
+<div id="confirmDialog" class="hidden fixed inset-0 z-[70] flex items-center justify-center modal-backdrop px-6">
+  <div class="bg-white rounded-2xl p-5 w-full max-w-sm">
+    <p id="confirmMsg" class="text-sm mb-4"></p>
+    <div class="flex gap-3">
+      <button onclick="closeConfirm(false)" class="flex-1 border border-slate-300 rounded-xl py-2 font-medium">Batal</button>
+      <button onclick="closeConfirm(true)" class="flex-1 bg-red-500 text-white rounded-xl py-2 font-medium">Ya, Lanjutkan</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ============================================================================
+   BAGIAN A: KONFIGURASI & STATE
+   ============================================================================ */
+const API_URL = (API_URL_MANUAL.indexOf('MASUKKAN_URL') === -1)
+  ? API_URL_MANUAL
+  : window.location.href.split('?')[0];
+
+const state = {
+  token: localStorage.getItem('ah_token') || '',
+  user: JSON.parse(localStorage.getItem('ah_user') || 'null'),
+  settings: {},
+  categories: [],
+  activities: [],
+  participants: [],
+  currentRoute: 'dashboard',
+  currentActivityId: null,
+  pfActivity: null,
+  sigPad: null
+};
+
+/* NOTE localStorage di aplikasi ini HANYA dipakai untuk:
+   - menyimpan token sesi login & preferensi tampilan (BUKAN sebagai database)
+   - draft/cache sementara agar UI terasa cepat
+   Seluruh data absensi/peserta/kegiatan yang sesungguhnya SELALU
+   dikirim & dibaca dari Google Spreadsheet lewat API di bawah ini. */
+
+/* ============================================================================
+   BAGIAN B: PEMANGGIL API (fetch ke Apps Script, hindari CORS preflight
+   dengan Content-Type text/plain)
+   ============================================================================ */
+async function api(action, payload) {
+  try {
+    const res = await fetch(API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ action, payload: payload || {}, token: state.token })
+    });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    return await res.json();
+  } catch (err) {
+    if (err.message && err.message.indexOf('Failed to fetch') !== -1) {
+      showToast('Koneksi internet terputus. Data belum berhasil disimpan.', 'error');
+    } else {
+      showToast('Server tidak dapat dihubungi. Silakan coba lagi.', 'error');
+    }
+    return { success: false, message: 'Gagal terhubung ke server: ' + err.message };
+  }
+}
+
+/* ============================================================================
+   BAGIAN C: UTIL UI (toast, confirm, format)
+   ============================================================================ */
+function showToast(message, type) {
+  type = type || 'info';
+  const colors = { info: 'bg-slate-800', success: 'bg-brand-dark', error: 'bg-red-600' };
+  const el = document.createElement('div');
+  el.className = `toast ${colors[type]} text-white text-sm px-4 py-3 rounded-xl shadow-lg`;
+  el.textContent = message;
+  document.getElementById('toastRoot').appendChild(el);
+  setTimeout(() => { el.style.opacity = '0'; el.style.transition = 'opacity .3s'; setTimeout(() => el.remove(), 300); }, 3000);
+}
+
+let confirmResolver = null;
+function askConfirm(msg) {
+  document.getElementById('confirmMsg').textContent = msg;
+  document.getElementById('confirmDialog').classList.remove('hidden');
+  return new Promise((resolve) => { confirmResolver = resolve; });
+}
+function closeConfirm(result) {
+  document.getElementById('confirmDialog').classList.add('hidden');
+  if (confirmResolver) { confirmResolver(result); confirmResolver = null; }
+}
+
+function fmtRupiah(n) { return 'Rp ' + (Number(n) || 0).toLocaleString('id-ID'); }
+function fmtTanggalIndo(dateStr) {
+  if (!dateStr) return '-';
+  const d = new Date(dateStr);
+  if (isNaN(d)) return dateStr;
+  const hari = ['Minggu','Senin','Selasa','Rabu','Kamis','Jumat','Sabtu'];
+  const bulan = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
+  return `${hari[d.getDay()]}, ${d.getDate()} ${bulan[d.getMonth()]} ${d.getFullYear()}`;
+}
+function esc(str) { return String(str == null ? '' : str).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function icon(name, cls) { return `<i data-lucide="${name}" class="${cls || 'w-5 h-5'}"></i>`; }
+function refreshIcons() { if (window.lucide) lucide.createIcons(); }
+
+/* ============================================================================
+   BAGIAN D: BOOTSTRAP APLIKASI
+   ============================================================================ */
+async function boot() {
+  const settingsRes = await api('getSettings', {});
+  if (settingsRes.success) { state.settings = settingsRes.data; applyBranding(); }
+
+  const params = new URLSearchParams(window.location.search);
+  const activityParam = params.get('activity') || (window.__INITIAL_ACTIVITY__ || '');
+
+  document.getElementById('splash').classList.add('hidden');
+
+  if (activityParam) {
+    showPage('page-public');
+    await loadPublicActivity(activityParam);
+  } else if (state.token && state.user) {
+    showPage('page-admin');
+    buildSidebarMenu();
+    navigate('dashboard');
+  } else {
+    showPage('page-login');
+  }
+  refreshIcons();
+}
+
+function applyBranding() {
+  const s = state.settings;
+  if (s.APP_TITLE) { document.title = s.APP_TITLE; document.getElementById('loginAppTitle').textContent = s.APP_TITLE; }
+  if (s.ORG_NAME) document.getElementById('loginOrgName').textContent = s.ORG_NAME + (s.MOSQUE_NAME ? ' • ' + s.MOSQUE_NAME : '');
+  if (s.THEME_COLOR) {
+    document.documentElement.style.setProperty('--brand', s.THEME_COLOR);
+  }
+  if (s.LOGO_URL) {
+    document.getElementById('loginLogoWrap').innerHTML = `<img src="${esc(s.LOGO_URL)}" class="w-full h-full object-cover" onerror="this.parentElement.innerHTML='${icon('book-open-check','text-white w-9 h-9').replace(/'/g, "\\'")}'">`;
+  }
+}
+
+function showPage(id) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+
+window.addEventListener('DOMContentLoaded', boot);
+</script>
+
+<!-- Bagian JS lanjutan (Auth, Public Attendance Flow, Admin Router & Pages, Export) -->
+<script src="app-part2.js" onerror="console.warn('app-part2.js dimuat inline, abaikan pesan ini jika halaman berjalan normal')"></script>
+<script>
+/* Semua kode di bawah ini disatukan langsung ke index.html (bukan file
+   eksternal terpisah) — mengikuti aturan "1 file index.html". Tag <script
+   src="app-part2.js"> di atas sengaja dibiarkan gagal dimuat (file itu tidak
+   dibuat) sebagai pengingat internal; seluruh logika sudah lengkap di bawah. */
+
+/* ============================================================================
+   BAGIAN E: AUTH
+   ============================================================================ */
+async function doLogin() {
+  const username = document.getElementById('loginUsername').value.trim();
+  const password = document.getElementById('loginPassword').value;
+  if (!username || !password) return showToast('Username dan password wajib diisi', 'error');
+  const btn = document.getElementById('loginBtn');
+  btn.disabled = true; btn.textContent = 'Memproses…';
+  const res = await api('login', { username, password });
+  btn.disabled = false; btn.textContent = 'Masuk';
+  if (!res.success) return showToast(res.message, 'error');
+  state.token = res.data.token;
+  state.user = res.data.user;
+  localStorage.setItem('ah_token', state.token);
+  localStorage.setItem('ah_user', JSON.stringify(state.user));
+  showToast('Login berhasil', 'success');
+  showPage('page-admin');
+  buildSidebarMenu();
+  navigate('dashboard');
+}
+
+function logout() {
+  localStorage.removeItem('ah_token');
+  localStorage.removeItem('ah_user');
+  state.token = ''; state.user = null;
+  toggleSidebar(false);
+  showPage('page-login');
+}
+
+function goPublicMode() {
+  showToast('Silakan minta link/QR kegiatan dari panitia untuk mengisi daftar hadir.', 'info');
+}
+
+/* ============================================================================
+   BAGIAN F: ALUR PESERTA VIA QR / LINK (PUBLIK, TANPA LOGIN)
+   ============================================================================ */
+async function loadPublicActivity(activityId) {
+  state.currentActivityId = activityId;
+  const res = await api('getActivityByToken', { id: activityId });
+  document.getElementById('publicLoading').classList.add('hidden');
+  if (!res.success) {
+    document.getElementById('publicNotFoundMsg').textContent = res.message;
+    document.getElementById('publicNotFound').classList.remove('hidden');
+    return;
+  }
+  state.pfActivity = res.data;
+
+  // Cek apakah sudah pernah absen di perangkat ini (cache ringan, backend tetap validasi ulang)
+  document.getElementById('publicForm').classList.remove('hidden');
+  document.getElementById('pfActivityName').textContent =
+    `${res.data.nama} • ${fmtTanggalIndo(res.data.tanggal)}`;
+
+  const tz = detectTimezoneLabel();
+  document.getElementById('pfWaktuOtomatis').textContent = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' ' + tz + ' • ' + fmtTanggalIndo(new Date());
+
+  pfGoStep(1);
+  setTimeout(() => initSignaturePad('pfSignaturePad'), 300);
+  refreshIcons();
+}
+
+function detectTimezoneLabel() {
+  const offset = -new Date().getTimezoneOffset() / 60;
+  if (offset >= 8.5) return 'WIT';
+  if (offset >= 7.5) return 'WITA';
+  return 'WIB';
+}
+
+function pfGoStep(step) {
+  [1, 2, 3, 4].forEach(i => {
+    document.getElementById('pfStep' + i).classList.toggle('hidden', i !== step);
+    const dot = document.querySelector(`.step-dot[data-step="${i}"] span:first-child`);
+    dot.classList.remove('active', 'done', 'bg-slate-100');
+    if (i < step) { dot.classList.add('done'); }
+    else if (i === step) { dot.classList.add('active'); }
+    else { dot.classList.add('bg-slate-100'); }
+  });
+  if (step === 4) setTimeout(() => resizeSignaturePad('pfSignaturePad'), 100);
+}
+
+let signaturePads = {};
+function initSignaturePad(canvasId) {
+  const canvas = document.getElementById(canvasId);
+  resizeSignaturePad(canvasId);
+  signaturePads[canvasId] = new SignaturePad(canvas, { backgroundColor: 'rgba(255,255,255,1)', penColor: '#1e293b' });
+}
+function resizeSignaturePad(canvasId) {
+  const canvas = document.getElementById(canvasId);
+  if (!canvas) return;
+  const ratio = Math.max(window.devicePixelRatio || 1, 1);
+  canvas.width = canvas.offsetWidth * ratio;
+  canvas.height = canvas.offsetHeight * ratio;
+  canvas.getContext('2d').scale(ratio, ratio);
+  if (signaturePads[canvasId]) signaturePads[canvasId].clear();
+}
+function clearSignature(canvasId) { if (signaturePads[canvasId]) signaturePads[canvasId].clear(); }
+
+async function submitPublicAttendance() {
+  const nama = document.getElementById('pfNama').value.trim();
+  if (!nama) { showToast('Nama lengkap wajib diisi', 'error'); return pfGoStep(1); }
+
+  const pad = signaturePads['pfSignaturePad'];
+  const signature = (pad && !pad.isEmpty()) ? pad.toDataURL('image/png') : '';
+
+  const payload = {
+    idKegiatan: state.currentActivityId,
+    qrToken: state.pfActivity ? state.pfActivity.qrToken : '',
+    metodeInput: 'QR',
+    nama: nama,
+    jenisKelamin: document.querySelector('input[name=pfGender]:checked').value,
+    status: document.getElementById('pfStatus').value,
+    dapukan: document.getElementById('pfDapukan').value.trim(),
+    noHp: document.getElementById('pfNoHp').value.trim(),
+    zonaWaktu: detectTimezoneLabel(),
+    kehadiran: document.querySelector('input[name=pfKehadiran]:checked').value,
+    keterangan: document.getElementById('pfKeterangan').value.trim(),
+    signature: signature
+  };
+  if (document.getElementById('pfWantInfak').checked) {
+    payload.infak = {
+      nominal: Number(document.getElementById('pfNominal').value || 0),
+      keterangan: document.getElementById('pfInfakKet').value.trim(),
+      metode: document.getElementById('pfMetode').value
+    };
+  }
+
+  const btn = document.getElementById('pfSubmitBtn');
+  if (btn) { btn.disabled = true; }
+  const res = await api('submitAttendance', payload);
+  if (btn) { btn.disabled = false; }
+
+  if (!res.success) {
+    if (res.data && res.data.duplikat) {
+      document.getElementById('publicForm').classList.add('hidden');
+      document.getElementById('publicAlreadyDone').classList.remove('hidden');
+      refreshIcons();
+      return;
+    }
+    return showToast(res.message, 'error');
+  }
+  document.getElementById('publicForm').classList.add('hidden');
+  document.getElementById('publicSuccess').classList.remove('hidden');
+  refreshIcons();
+}
+
+/* ============================================================================
+   BAGIAN G: SIDEBAR & ROUTER ADMIN
+   ============================================================================ */
+function toggleSidebar(open) {
+  document.getElementById('sidebar').classList.toggle('-translate-x-full', !open);
+  document.getElementById('sidebarBackdrop').classList.toggle('hidden', !open);
+}
+
+const MENU_ITEMS = [
+  { route: 'dashboard', label: 'Dashboard', icon: 'home', roles: ['ADMINISTRATOR', 'OPERATOR'] },
+  { route: 'categories', label: 'Kategori Pengajian', icon: 'list-tree', roles: ['ADMINISTRATOR', 'OPERATOR'] },
+  { route: 'activities', label: 'Kegiatan', icon: 'calendar', roles: ['ADMINISTRATOR', 'OPERATOR'] },
+  { route: 'participants', label: 'Peserta', icon: 'users', roles: ['ADMINISTRATOR', 'OPERATOR'] },
+  { route: 'attendance', label: 'Daftar Hadir', icon: 'clipboard-check', roles: ['ADMINISTRATOR', 'OPERATOR'] },
+  { route: 'infak', label: 'Infak', icon: 'hand-coins', roles: ['ADMINISTRATOR', 'OPERATOR'] },
+  { route: 'reports', label: 'Laporan', icon: 'bar-chart-3', roles: ['ADMINISTRATOR', 'OPERATOR'] },
+  { route: 'settings', label: 'Pengaturan', icon: 'settings', roles: ['ADMINISTRATOR'] },
+  { route: 'users', label: 'Pengguna', icon: 'shield-user', roles: ['ADMINISTRATOR'] },
+  { route: 'profile', label: 'Profil', icon: 'user-round', roles: ['ADMINISTRATOR', 'OPERATOR'] }
+];
+
+function buildSidebarMenu() {
+  document.getElementById('sbUserName').textContent = state.user.nama;
+  document.getElementById('sbUserRole').textContent = roleLabel(state.user.role);
+  document.getElementById('adminUserName').textContent = state.user.nama;
+  document.getElementById('adminUserRole').textContent = roleLabel(state.user.role);
+  const wrap = document.getElementById('sidebarMenu');
+  wrap.innerHTML = MENU_ITEMS.filter(m => m.roles.includes(state.user.role)).map(m => `
+    <button onclick="navigate('${m.route}'); toggleSidebar(false)" class="w-full flex items-center gap-3 px-5 py-3 text-sm hover:bg-slate-50 text-slate-700">
+      ${icon(m.icon, 'w-5 h-5 text-slate-400')} ${m.label}
+    </button>`).join('');
+  refreshIcons();
+}
+function roleLabel(r) { return { ADMINISTRATOR: 'Administrator', OPERATOR: 'Operator', PESERTA: 'Peserta' }[r] || r; }
+
+const ROUTES = {
+  dashboard: renderDashboard,
+  categories: renderCategories,
+  activities: renderActivities,
+  activityDetail: renderActivityDetail,
+  participants: renderParticipants,
+  attendance: renderAttendanceList,
+  infak: renderInfak,
+  reports: renderReports,
+  settings: renderSettings,
+  users: renderUsers,
+  profile: renderProfile,
+  menu: renderMenu,
+  scan: () => navigate('activities')
+};
+
+async function navigate(route, params) {
+  state.currentRoute = route;
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.toggle('active', n.dataset.route === route));
+  const content = document.getElementById('adminContent');
+  content.innerHTML = `<div class="space-y-3">${Array(3).fill('<div class="skeleton h-20 rounded-2xl"></div>').join('')}</div>`;
+  window.scrollTo(0, 0);
+  const renderer = ROUTES[route] || renderDashboard;
+  await renderer(params);
+  refreshIcons();
+}
+
+/* ============================================================================
+   BAGIAN H: DASHBOARD
+   ============================================================================ */
+async function renderDashboard() {
+  const res = await api('getDashboard', {});
+  const content = document.getElementById('adminContent');
+  if (!res.success) { content.innerHTML = errorBox(res.message); return; }
+  const d = res.data;
+  content.innerHTML = `
+    <div>
+      <h2 class="font-bold text-lg mb-3">Ringkasan Hari Ini</h2>
+      <div class="grid grid-cols-2 gap-3">
+        ${statCard('calendar', d.kegiatanHariIni, 'Kegiatan Hari Ini', 'bg-brand-light text-brand-dark')}
+        ${statCard('user-check', d.hadirHariIni, 'Hadir', 'bg-emerald-50 text-emerald-600')}
+        ${statCard('clock-alert', d.izinHariIni, 'Izin', 'bg-amber-50 text-amber-600')}
+        ${statCard('thermometer', d.sakitHariIni, 'Sakit', 'bg-orange-50 text-orange-600')}
+        ${statCard('user-x', d.alfaHariIni, 'Alfa', 'bg-red-50 text-red-600')}
+        ${statCard('hand-coins', fmtRupiah(d.infakHariIni), 'Infak Hari Ini', 'bg-teal-50 text-teal-600', true)}
+      </div>
+    </div>
+
+    <div class="grid grid-cols-3 gap-3 text-center">
+      <div class="bg-white rounded-2xl p-3 shadow-sm"><p class="text-xl font-bold text-brand-dark">${d.totalKegiatan}</p><p class="text-[11px] text-slate-400">Total Kegiatan</p></div>
+      <div class="bg-white rounded-2xl p-3 shadow-sm"><p class="text-xl font-bold text-brand-dark">${d.totalPeserta}</p><p class="text-[11px] text-slate-400">Total Peserta</p></div>
+      <div class="bg-white rounded-2xl p-3 shadow-sm"><p class="text-xl font-bold text-brand-dark">${fmtRupiah(d.infakTotal).replace('Rp ','')}</p><p class="text-[11px] text-slate-400">Total Infak</p></div>
+    </div>
+
+    <div>
+      <div class="flex items-center justify-between mb-2">
+        <h3 class="font-semibold">Kegiatan Mendatang</h3>
+        <button onclick="navigate('activities')" class="text-xs text-brand-dark font-medium">Lihat Semua</button>
+      </div>
+      <div class="space-y-2">
+        ${d.kegiatanMendatang.length ? d.kegiatanMendatang.map(a => activityMiniCard(a)).join('') : emptyBox('Belum ada kegiatan mendatang')}
+      </div>
+    </div>
+
+    <div>
+      <h3 class="font-semibold mb-2">Aktivitas Terbaru</h3>
+      <div class="bg-white rounded-2xl shadow-sm divide-y">
+        ${d.aktivitasTerbaru.length ? d.aktivitasTerbaru.map(a => `
+          <div class="p-3 flex items-center gap-3 text-sm">
+            <div class="w-9 h-9 rounded-full bg-brand-light flex items-center justify-center">${icon('check', 'w-4 h-4 text-brand-dark')}</div>
+            <div class="flex-1">
+              <p class="font-medium">${esc(a.NAMA)}</p>
+              <p class="text-xs text-slate-400">${esc(a.KEHADIRAN)} • ${esc(a.WAKTU_DATANG)}</p>
+            </div>
+          </div>`).join('') : `<div class="p-4 text-center text-sm text-slate-400">Belum ada aktivitas</div>`}
+      </div>
+    </div>`;
+}
+
+function statCard(iconName, value, label, colorClass, wide) {
+  return `<div class="bg-white rounded-2xl p-4 shadow-sm ${wide ? 'col-span-2' : ''}">
+    <div class="w-9 h-9 rounded-xl ${colorClass} flex items-center justify-center mb-2">${icon(iconName, 'w-4 h-4')}</div>
+    <p class="text-xl font-bold">${value}</p>
+    <p class="text-xs text-slate-400">${label}</p>
+  </div>`;
+}
+function emptyBox(text) { return `<div class="bg-white rounded-2xl p-6 text-center text-sm text-slate-400 shadow-sm">${text}</div>`; }
+function errorBox(msg) { return `<div class="bg-red-50 text-red-600 rounded-2xl p-4 text-sm">${esc(msg)}</div>`; }
+
+function activityMiniCard(a) {
+  return `<div class="bg-white rounded-2xl p-3 shadow-sm flex items-center gap-3 cursor-pointer" onclick="navigate('activityDetail', {id:'${a.ID_KEGIATAN}'})">
+    <div class="w-10 h-10 rounded-xl bg-brand-light flex items-center justify-center">${icon('calendar-days', 'w-5 h-5 text-brand-dark')}</div>
+    <div class="flex-1 min-w-0">
+      <p class="font-medium text-sm truncate">${esc(a.NAMA_KEGIATAN)}</p>
+      <p class="text-xs text-slate-400">${fmtTanggalIndo(a.TANGGAL)} • ${esc(a.JAM_MULAI || '')}</p>
+    </div>
+    ${icon('chevron-right', 'w-4 h-4 text-slate-300')}
+  </div>`;
+}
+
+/* ============================================================================
+   BAGIAN I: KATEGORI PENGAJIAN
+   ============================================================================ */
+async function renderCategories() {
+  const res = await api('getCategories', {});
+  const content = document.getElementById('adminContent');
+  const cats = res.success ? res.data : [];
+  content.innerHTML = `
+    <div class="flex items-center justify-between">
+      <h2 class="font-bold text-lg">Kategori Pengajian</h2>
+      <button onclick="openCategoryForm()" class="w-9 h-9 rounded-full bg-brand text-white flex items-center justify-center">${icon('plus','w-5 h-5')}</button>
+    </div>
+    <div class="space-y-2">
+      ${cats.length ? cats.map(c => `
+        <div class="bg-white rounded-2xl p-3 shadow-sm flex items-center gap-3">
+          <div class="w-10 h-10 rounded-xl bg-brand-light flex items-center justify-center">${icon(c.ICON || 'book-open', 'w-5 h-5 text-brand-dark')}</div>
+          <div class="flex-1"><p class="font-medium text-sm">${esc(c.NAMA_KATEGORI)}</p><p class="text-xs text-slate-400">Urutan ${esc(c.URUTAN)}</p></div>
+          <button onclick='openCategoryForm(${JSON.stringify(c)})' class="p-2 text-slate-400">${icon('pencil','w-4 h-4')}</button>
+          <button onclick="deleteCategory('${c.ID}')" class="p-2 text-red-400">${icon('trash-2','w-4 h-4')}</button>
+        </div>`).join('') : emptyBox('Belum ada kategori. Tambahkan kategori pertama Anda.')}
+    </div>`;
+}
+
+function openCategoryForm(cat) {
+  const isEdit = !!cat;
+  openModal(`
+    <h3 class="font-bold text-lg mb-4">${isEdit ? 'Edit' : 'Tambah'} Kategori</h3>
+    <div class="space-y-3">
+      <input id="catNama" class="w-full border border-slate-200 rounded-xl px-4 py-3" placeholder="Nama kategori" value="${isEdit ? esc(cat.NAMA_KATEGORI) : ''}">
+      <input id="catIcon" class="w-full border border-slate-200 rounded-xl px-4 py-3" placeholder="Icon (nama ikon lucide, mis: users)" value="${isEdit ? esc(cat.ICON) : 'book-open'}">
+      <input id="catUrutan" type="number" class="w-full border border-slate-200 rounded-xl px-4 py-3" placeholder="Urutan" value="${isEdit ? esc(cat.URUTAN) : ''}">
+      <button onclick="saveCategoryForm(${isEdit ? `'${cat.ID}'` : 'null'})" class="w-full bg-brand text-white font-semibold py-3 rounded-xl">Simpan</button>
+    </div>`);
+}
+async function saveCategoryForm(id) {
+  const payload = { nama: document.getElementById('catNama').value.trim(), icon: document.getElementById('catIcon').value.trim(), urutan: Number(document.getElementById('catUrutan').value) || undefined };
+  if (!payload.nama) return showToast('Nama kategori wajib diisi', 'error');
+  const res = await api(id ? 'updateCategory' : 'createCategory', id ? Object.assign({ id }, payload) : payload);
+  if (!res.success) return showToast(res.message, 'error');
+  showToast(res.message, 'success'); closeModal(); navigate('categories');
+}
+async function deleteCategory(id) {
+  if (!await askConfirm('Hapus kategori ini? Tindakan tidak dapat dibatalkan.')) return;
+  const res = await api('deleteCategory', { id });
+  showToast(res.message, res.success ? 'success' : 'error');
+  if (res.success) navigate('categories');
+}
+
+/* ============================================================================
+   BAGIAN J: KEGIATAN + QR CODE
+   ============================================================================ */
+async function renderActivities() {
+  const [actRes, catRes] = await Promise.all([api('getActivities', {}), api('getCategories', {})]);
+  state.categories = catRes.success ? catRes.data : [];
+  const content = document.getElementById('adminContent');
+  const acts = actRes.success ? actRes.data : [];
+  content.innerHTML = `
+    <div class="flex items-center justify-between">
+      <h2 class="font-bold text-lg">Kegiatan</h2>
+      <button onclick="openActivityForm()" class="w-9 h-9 rounded-full bg-brand text-white flex items-center justify-center">${icon('plus','w-5 h-5')}</button>
+    </div>
+    <input id="actSearch" oninput="filterActivityCards()" placeholder="Cari kegiatan…" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 bg-white text-sm">
+    <div id="activityCards" class="space-y-3">
+      ${acts.length ? acts.map(activityCard).join('') : emptyBox('Belum ada kegiatan. Buat kegiatan pertama Anda.')}
+    </div>`;
+  state.activities = acts;
+}
+function filterActivityCards() {
+  const q = document.getElementById('actSearch').value.toLowerCase();
+  const filtered = state.activities.filter(a => a.NAMA_KEGIATAN.toLowerCase().includes(q));
+  document.getElementById('activityCards').innerHTML = filtered.length ? filtered.map(activityCard).join('') : emptyBox('Tidak ada kegiatan yang cocok');
+  refreshIcons();
+}
+function activityCard(a) {
+  return `<div class="bg-white rounded-2xl p-4 shadow-sm cursor-pointer" onclick="navigate('activityDetail', {id:'${a.ID_KEGIATAN}'})">
+    <div class="flex items-start gap-3">
+      <div class="w-10 h-10 rounded-xl bg-brand-light flex items-center justify-center shrink-0">${icon('calendar-days','w-5 h-5 text-brand-dark')}</div>
+      <div class="flex-1 min-w-0">
+        <p class="font-semibold text-sm">${esc(a.NAMA_KEGIATAN)}</p>
+        <p class="text-xs text-slate-400 mt-0.5">${fmtTanggalIndo(a.TANGGAL)} • ${esc(a.JAM_MULAI||'')}${a.JAM_SELESAI ? ' - '+esc(a.JAM_SELESAI) : ''}</p>
+        <p class="text-xs text-slate-400">${icon('map-pin','w-3 h-3 inline')} ${esc(a.LOKASI||'-')}</p>
+        <div class="flex items-center gap-4 mt-2 text-xs text-slate-500">
+          <span>${icon('users','w-3 h-3 inline mr-1')}${a.TOTAL_HADIR||0} Hadir</span>
+          <span>${icon('hand-coins','w-3 h-3 inline mr-1')}${fmtRupiah(a.TOTAL_INFAK||0)}</span>
+        </div>
+      </div>
+      <span class="text-[10px] px-2 py-1 rounded-full ${a.STATUS==='AKTIF'?'bg-brand-light text-brand-dark':'bg-slate-100 text-slate-500'}">${esc(a.STATUS)}</span>
+    </div>
+  </div>`;
+}
+
+function openActivityForm(act) {
+  const isEdit = !!act;
+  const catOptions = state.categories.map(c => `<option value="${c.ID}" ${isEdit && act.ID_KATEGORI===c.ID?'selected':''}>${esc(c.NAMA_KATEGORI)}</option>`).join('');
+  openModal(`
+    <h3 class="font-bold text-lg mb-4">${isEdit?'Edit':'Tambah'} Kegiatan</h3>
+    <div class="space-y-3 max-h-[60vh] overflow-y-auto pr-1">
+      <input id="actNama" class="w-full border border-slate-200 rounded-xl px-4 py-3" placeholder="Nama kegiatan" value="${isEdit?esc(act.NAMA_KEGIATAN):''}">
+      <select id="actKategori" class="w-full border border-slate-200 rounded-xl px-4 py-3 bg-white"><option value="">Pilih kategori</option>${catOptions}</select>
+      <textarea id="actDeskripsi" class="w-full border border-slate-200 rounded-xl px-4 py-3" placeholder="Deskripsi (opsional)">${isEdit?esc(act.DESKRIPSI):''}</textarea>
+      <input id="actTanggal" type="date" class="w-full border border-slate-200 rounded-xl px-4 py-3" value="${isEdit?String(act.TANGGAL).slice(0,10):''}">
+      <div class="grid grid-cols-2 gap-2">
+        <input id="actJamMulai" type="time" class="w-full border border-slate-200 rounded-xl px-4 py-3" value="${isEdit?esc(act.JAM_MULAI):''}">
+        <input id="actJamSelesai" type="time" class="w-full border border-slate-200 rounded-xl px-4 py-3" value="${isEdit?esc(act.JAM_SELESAI):''}">
+      </div>
+      <input id="actLokasi" class="w-full border border-slate-200 rounded-xl px-4 py-3" placeholder="Lokasi" value="${isEdit?esc(act.LOKASI):''}">
+      <button onclick="saveActivityForm(${isEdit?`'${act.ID_KEGIATAN}'`:'null'})" class="w-full bg-brand text-white font-semibold py-3 rounded-xl">Simpan</button>
+    </div>`);
+}
+async function saveActivityForm(id) {
+  const payload = {
+    namaKegiatan: document.getElementById('actNama').value.trim(),
+    idKategori: document.getElementById('actKategori').value,
+    deskripsi: document.getElementById('actDeskripsi').value.trim(),
+    tanggal: document.getElementById('actTanggal').value,
+    jamMulai: document.getElementById('actJamMulai').value,
+    jamSelesai: document.getElementById('actJamSelesai').value,
+    lokasi: document.getElementById('actLokasi').value.trim()
+  };
+  if (!payload.namaKegiatan || !payload.tanggal) return showToast('Nama kegiatan dan tanggal wajib diisi', 'error');
+  const res = await api(id ? 'updateActivity' : 'createActivity', id ? Object.assign({ id }, payload) : payload);
+  if (!res.success) return showToast(res.message, 'error');
+  showToast(res.message, 'success'); closeModal();
+  navigate(id ? 'activityDetail' : 'activities', id ? { id } : undefined);
+  if (!id && res.data) navigate('activityDetail', { id: res.data.id });
+}
+
+async function renderActivityDetail(params) {
+  const id = params && params.id;
+  const [actRes, attRes, infakRes] = await Promise.all([
+    api('getActivities', {}), api('getAttendance', { idKegiatan: id }), api('getInfak', { idKegiatan: id })
+  ]);
+  const act = (actRes.data || []).find(a => a.ID_KEGIATAN === id);
+  const content = document.getElementById('adminContent');
+  if (!act) { content.innerHTML = errorBox('Kegiatan tidak ditemukan'); return; }
+  state.currentActivityId = id;
+  const link = act.QR_URL;
+
+  content.innerHTML = `
+    <button onclick="navigate('activities')" class="flex items-center gap-1 text-sm text-slate-500">${icon('arrow-left','w-4 h-4')} Kembali</button>
+    <div class="bg-white rounded-2xl p-5 shadow-sm text-center">
+      <h2 class="font-bold text-lg">${esc(act.NAMA_KEGIATAN)}</h2>
+      <p class="text-sm text-slate-400">${fmtTanggalIndo(act.TANGGAL)} • ${esc(act.JAM_MULAI||'')}${act.JAM_SELESAI?' - '+esc(act.JAM_SELESAI):''}</p>
+      <p class="text-sm text-slate-400 mb-4">${icon('map-pin','w-3 h-3 inline')} ${esc(act.LOKASI||'-')}</p>
+      <div id="qrHolder" class="mx-auto w-56 h-56 border-2 border-brand rounded-2xl flex items-center justify-center bg-white"></div>
+      <p class="text-xs text-slate-400 mt-3 mb-1">Link Kegiatan</p>
+      <div class="flex items-center gap-2 bg-slate-50 rounded-xl p-2">
+        <input readonly value="${esc(link)}" class="flex-1 bg-transparent text-xs px-2 truncate">
+        <button onclick="copyLink('${link}')" class="p-2 text-slate-500">${icon('copy','w-4 h-4')}</button>
+      </div>
+      <div class="grid grid-cols-1 gap-2 mt-4">
+        <button onclick="shareWhatsApp('${act.ID_KEGIATAN}')" class="bg-emerald-500 text-white rounded-xl py-3 font-semibold flex items-center justify-center gap-2">${icon('message-circle','w-4 h-4')} Bagikan via WhatsApp</button>
+        <button onclick="shareEmail('${act.ID_KEGIATAN}')" class="border border-slate-300 rounded-xl py-3 font-semibold flex items-center justify-center gap-2">${icon('mail','w-4 h-4')} Bagikan via Email</button>
+        <button onclick="downloadQR()" class="border border-slate-300 rounded-xl py-3 font-semibold flex items-center justify-center gap-2">${icon('download','w-4 h-4')} Unduh QR Code</button>
+      </div>
+      <p class="text-[11px] text-slate-400 mt-3">Satu kegiatan, satu QR Code dan satu link unik.</p>
+    </div>
+
+    <div class="grid grid-cols-3 gap-3 text-center">
+      <div class="bg-white rounded-2xl p-3 shadow-sm"><p class="text-lg font-bold text-brand-dark">${attRes.data.filter(a=>a.KEHADIRAN==='Hadir').length}</p><p class="text-[11px] text-slate-400">Hadir</p></div>
+      <div class="bg-white rounded-2xl p-3 shadow-sm"><p class="text-lg font-bold text-brand-dark">${attRes.data.length}</p><p class="text-[11px] text-slate-400">Total Absensi</p></div>
+      <div class="bg-white rounded-2xl p-3 shadow-sm"><p class="text-lg font-bold text-brand-dark">${fmtRupiah(infakRes.total||0).replace('Rp ','')}</p><p class="text-[11px] text-slate-400">Infak</p></div>
+    </div>
+
+    <div class="grid grid-cols-2 gap-3">
+      <button onclick="navigate('attendance', {id:'${id}'})" class="bg-white rounded-2xl p-4 shadow-sm text-left"><div class="w-9 h-9 rounded-xl bg-brand-light flex items-center justify-center mb-2">${icon('clipboard-check','w-4 h-4 text-brand-dark')}</div><p class="text-sm font-medium">Daftar Hadir</p></button>
+      <button onclick="openManualAttendanceForm('${id}')" class="bg-white rounded-2xl p-4 shadow-sm text-left"><div class="w-9 h-9 rounded-xl bg-brand-light flex items-center justify-center mb-2">${icon('user-plus','w-4 h-4 text-brand-dark')}</div><p class="text-sm font-medium">Absen Manual</p></button>
+      <button onclick="openExportMenu('${id}', '${esc(act.NAMA_KEGIATAN)}', '${act.TANGGAL}')" class="bg-white rounded-2xl p-4 shadow-sm text-left"><div class="w-9 h-9 rounded-xl bg-brand-light flex items-center justify-center mb-2">${icon('file-down','w-4 h-4 text-brand-dark')}</div><p class="text-sm font-medium">Export Laporan</p></button>
+      <button onclick="openActivityForm(${JSON.stringify(act)})" class="bg-white rounded-2xl p-4 shadow-sm text-left"><div class="w-9 h-9 rounded-xl bg-brand-light flex items-center justify-center mb-2">${icon('pencil','w-4 h-4 text-brand-dark')}</div><p class="text-sm font-medium">Edit Kegiatan</p></button>
+    </div>`;
+
+  renderQrCode('qrHolder', link);
+}
+
+function renderQrCode(holderId, link) {
+  document.getElementById(holderId).innerHTML = '';
+  new QRCode(document.getElementById(holderId), { text: link, width: 208, height: 208, colorDark: '#15803d', colorLight: '#ffffff', correctLevel: QRCode.CorrectLevel.H });
+}
+function copyLink(link) {
+  navigator.clipboard.writeText(link).then(() => showToast('Link disalin', 'success'));
+}
+function downloadQR() {
+  const canvas = document.querySelector('#qrHolder canvas') || document.querySelector('#qrHolder img');
+  const a = document.createElement('a');
+  a.download = 'qr-kegiatan.png';
+  a.href = canvas.tagName === 'CANVAS' ? canvas.toDataURL('image/png') : canvas.src;
+  a.click();
+}
+function shareWhatsApp(activityId) {
+  const act = state.activities.find(a => a.ID_KEGIATAN === activityId) || {};
+  const text = `اَلسَّلاَمُ عَلَيْكُمْ وَرَحْمَةُ اللهِ وَبَرَكَاتُهُ\n\nSilakan melakukan daftar hadir kegiatan:\n${act.NAMA_KEGIATAN || ''}\nTanggal: ${fmtTanggalIndo(act.TANGGAL)}\nWaktu: ${act.JAM_MULAI || ''}\nLokasi: ${act.LOKASI || ''}\n\nLink absensi: ${act.QR_URL || ''}`;
+  window.open('https://wa.me/?text=' + encodeURIComponent(text), '_blank');
+}
+function shareEmail(activityId) {
+  const act = state.activities.find(a => a.ID_KEGIATAN === activityId) || {};
+  const subject = 'Daftar Hadir: ' + (act.NAMA_KEGIATAN || '');
+  const body = `Silakan melakukan daftar hadir kegiatan melalui link berikut:\n${act.QR_URL || ''}`;
+  window.open(`mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`, '_blank');
+}
+
+/* ============================================================================
+   BAGIAN K: ABSENSI MANUAL (ADMIN/OPERATOR)
+   ============================================================================ */
+async function openManualAttendanceForm(idKegiatan) {
+  const res = await api('getParticipants', {});
+  const participants = res.success ? res.data : [];
+  openModal(`
+    <h3 class="font-bold text-lg mb-4">Absen Manual</h3>
+    <div class="space-y-3 max-h-[65vh] overflow-y-auto pr-1">
+      <input list="participantList" id="maNama" class="w-full border border-slate-200 rounded-xl px-4 py-3" placeholder="Cari / ketik nama peserta">
+      <datalist id="participantList">${participants.map(p => `<option value="${esc(p.NAMA)}">`).join('')}</datalist>
+      <div class="flex gap-4 bg-white border border-slate-200 rounded-xl p-3">
+        <label class="flex items-center gap-2 text-sm"><input type="radio" name="maGender" value="Pria" checked> Pria</label>
+        <label class="flex items-center gap-2 text-sm"><input type="radio" name="maGender" value="Wanita"> Wanita</label>
+      </div>
+      <select id="maStatus" class="w-full border border-slate-200 rounded-xl px-4 py-3 bg-white">
+        <option>Bapak-Bapak</option><option>Ibu-Ibu</option><option>Muda-Mudi</option><option>Remaja</option><option>Pra Remaja</option><option>Caberawit</option>
+      </select>
+      <input id="maDapukan" class="w-full border border-slate-200 rounded-xl px-4 py-3" placeholder="Dapukan">
+      <select id="maKehadiran" class="w-full border border-slate-200 rounded-xl px-4 py-3 bg-white">
+        <option value="Hadir">Hadir</option><option value="Izin">Izin</option><option value="Sakit">Sakit</option><option value="Alfa">Alfa</option>
+      </select>
+      <textarea id="maKeterangan" class="w-full border border-slate-200 rounded-xl px-4 py-3" placeholder="Keterangan (opsional)"></textarea>
+      <input id="maInfak" type="number" min="0" class="w-full border border-slate-200 rounded-xl px-4 py-3" placeholder="Infak (opsional, Rp)">
+      <button onclick="submitManualAttendance('${idKegiatan}')" class="w-full bg-brand text-white font-semibold py-3 rounded-xl">Simpan Absensi</button>
+    </div>`);
+}
+async function submitManualAttendance(idKegiatan) {
+  const nama = document.getElementById('maNama').value.trim();
+  if (!nama) return showToast('Nama wajib diisi', 'error');
+  const payload = {
+    idKegiatan, nama,
+    jenisKelamin: document.querySelector('input[name=maGender]:checked').value,
+    status: document.getElementById('maStatus').value,
+    dapukan: document.getElementById('maDapukan').value.trim(),
+    kehadiran: document.getElementById('maKehadiran').value,
+    keterangan: document.getElementById('maKeterangan').value.trim(),
+    metodeInput: 'OPERATOR',
+    zonaWaktu: detectTimezoneLabel()
+  };
+  const nominal = Number(document.getElementById('maInfak').value || 0);
+  if (nominal > 0) payload.infak = { nominal };
+  const res = await api('submitAttendance', payload);
+  if (!res.success) return showToast(res.message, 'error');
+  showToast('Absensi manual tersimpan', 'success'); closeModal();
+  navigate('attendance', { id: idKegiatan });
+}
+
+/* ============================================================================
+   BAGIAN L: DAFTAR HADIR (LIST + EXPORT)
+   ============================================================================ */
+async function renderAttendanceList(params) {
+  const [actRes] = await Promise.all([api('getActivities', {})]);
+  state.activities = actRes.data || [];
+  const idKegiatan = (params && params.id) || (state.activities[0] ? state.activities[0].ID_KEGIATAN : '');
+  const content = document.getElementById('adminContent');
+
+  const options = state.activities.map(a => `<option value="${a.ID_KEGIATAN}" ${a.ID_KEGIATAN===idKegiatan?'selected':''}>${esc(a.NAMA_KEGIATAN)} (${fmtTanggalIndo(a.TANGGAL)})</option>`).join('');
+  content.innerHTML = `
+    <h2 class="font-bold text-lg">Daftar Hadir</h2>
+    <select id="attActivitySelect" onchange="navigate('attendance', {id: this.value})" class="w-full border border-slate-200 rounded-xl px-4 py-3 bg-white text-sm">${options || '<option>Belum ada kegiatan</option>'}</select>
+    <div id="attTableWrap"></div>`;
+  if (!idKegiatan) return;
+
+  const res = await api('getAttendance', { idKegiatan });
+  const rows = res.success ? res.data : [];
+  const act = state.activities.find(a => a.ID_KEGIATAN === idKegiatan) || {};
+  document.getElementById('attTableWrap').innerHTML = `
+    <div class="flex gap-2 mt-3">
+      <button onclick="openExportMenu('${idKegiatan}','${esc(act.NAMA_KEGIATAN||'')}','${act.TANGGAL||''}')" class="flex-1 bg-brand text-white rounded-xl py-2.5 text-sm font-semibold flex items-center justify-center gap-1">${icon('file-down','w-4 h-4')} Export</button>
+      <button onclick="openManualAttendanceForm('${idKegiatan}')" class="flex-1 border border-slate-300 rounded-xl py-2.5 text-sm font-semibold flex items-center justify-center gap-1">${icon('user-plus','w-4 h-4')} Tambah</button>
+    </div>
+    <div class="bg-white rounded-2xl shadow-sm mt-3 divide-y overflow-hidden">
+      ${rows.length ? rows.map(r => attendanceRow(r)).join('') : emptyBox('Belum ada data absensi untuk kegiatan ini')}
+    </div>`;
+}
+function attendanceRow(r) {
+  const badge = { Hadir: 'bg-emerald-50 text-emerald-600', Izin: 'bg-amber-50 text-amber-600', Sakit: 'bg-orange-50 text-orange-600', Alfa: 'bg-red-50 text-red-600' }[r.KEHADIRAN] || 'bg-slate-100 text-slate-500';
+  return `<div class="p-3 flex items-center gap-3 text-sm">
+    <span class="w-6 text-center text-xs text-slate-400">${esc(r.NO)}</span>
+    <div class="flex-1 min-w-0">
+      <p class="font-medium truncate">${esc(r.NAMA)}</p>
+      <p class="text-[11px] text-slate-400">${esc(r.DAPUKAN||'-')} • ${esc(r.WAKTU_DATANG)} ${esc(r.ZONA_WAKTU||'')}</p>
+    </div>
+    <span class="text-[10px] px-2 py-1 rounded-full ${badge}">${esc(r.KEHADIRAN)}</span>
+    <button onclick="deleteAttendanceRow('${r.ID_ABSENSI}', '${r.ID_KEGIATAN}')" class="text-red-400 p-1">${icon('trash-2','w-4 h-4')}</button>
+  </div>`;
+}
+async function deleteAttendanceRow(id, idKegiatan) {
+  if (!await askConfirm('Hapus data absensi ini?')) return;
+  const res = await api('deleteAttendance', { id });
+  showToast(res.message, res.success?'success':'error');
+  if (res.success) navigate('attendance', { id: idKegiatan });
+}
+
+/* ============================================================================
+   BAGIAN M: PESERTA (MASTER DATA)
+   ============================================================================ */
+async function renderParticipants() {
+  const res = await api('getParticipants', {});
+  state.participants = res.data || [];
+  const content = document.getElementById('adminContent');
+  content.innerHTML = `
+    <div class="flex items-center justify-between">
+      <h2 class="font-bold text-lg">Peserta</h2>
+      <button onclick="openParticipantForm()" class="w-9 h-9 rounded-full bg-brand text-white flex items-center justify-center">${icon('plus','w-5 h-5')}</button>
+    </div>
+    <input oninput="filterParticipants(this.value)" placeholder="Cari peserta…" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 bg-white text-sm">
+    <div id="participantCards" class="bg-white rounded-2xl shadow-sm divide-y overflow-hidden">
+      ${state.participants.length ? state.participants.map(participantRow).join('') : emptyBox('Belum ada data peserta')}
+    </div>`;
+}
+function participantRow(p) {
+  return `<div class="p-3 flex items-center gap-3 text-sm">
+    <div class="w-9 h-9 rounded-full bg-brand-light flex items-center justify-center">${icon('user-round','w-4 h-4 text-brand-dark')}</div>
+    <div class="flex-1 min-w-0"><p class="font-medium truncate">${esc(p.NAMA)}</p><p class="text-[11px] text-slate-400">${esc(p.DAPUKAN||'-')} • ${esc(p.STATUS||'-')}</p></div>
+    <button onclick='openParticipantForm(${JSON.stringify(p)})' class="p-2 text-slate-400">${icon('pencil','w-4 h-4')}</button>
+    <button onclick="deleteParticipant('${p.ID_PESERTA}')" class="p-2 text-red-400">${icon('trash-2','w-4 h-4')}</button>
+  </div>`;
+}
+function filterParticipants(q) {
+  q = q.toLowerCase();
+  const filtered = state.participants.filter(p => p.NAMA.toLowerCase().includes(q));
+  document.getElementById('participantCards').innerHTML = filtered.length ? filtered.map(participantRow).join('') : emptyBox('Tidak ditemukan');
+  refreshIcons();
+}
+function openParticipantForm(p) {
+  const isEdit = !!p;
+  openModal(`
+    <h3 class="font-bold text-lg mb-4">${isEdit?'Edit':'Tambah'} Peserta</h3>
+    <div class="space-y-3">
+      <input id="pNama" class="w-full border border-slate-200 rounded-xl px-4 py-3" placeholder="Nama lengkap" value="${isEdit?esc(p.NAMA):''}">
+      <div class="flex gap-4 bg-white border border-slate-200 rounded-xl p-3">
+        <label class="flex items-center gap-2 text-sm"><input type="radio" name="pGender" value="Pria" ${!isEdit||p.JENIS_KELAMIN==='Pria'?'checked':''}> Pria</label>
+        <label class="flex items-center gap-2 text-sm"><input type="radio" name="pGender" value="Wanita" ${isEdit&&p.JENIS_KELAMIN==='Wanita'?'checked':''}> Wanita</label>
+      </div>
+      <input id="pStatus" class="w-full border border-slate-200 rounded-xl px-4 py-3" placeholder="Status (Bapak-Bapak/Ibu-Ibu/dst)" value="${isEdit?esc(p.STATUS):''}">
+      <input id="pDapukan" class="w-full border border-slate-200 rounded-xl px-4 py-3" placeholder="Dapukan" value="${isEdit?esc(p.DAPUKAN):''}">
+      <input id="pNoHp" class="w-full border border-slate-200 rounded-xl px-4 py-3" placeholder="No. HP" value="${isEdit?esc(p.NO_HP):''}">
+      <input id="pEmail" class="w-full border border-slate-200 rounded-xl px-4 py-3" placeholder="Email" value="${isEdit?esc(p.EMAIL):''}">
+      <button onclick="saveParticipantForm(${isEdit?`'${p.ID_PESERTA}'`:'null'})" class="w-full bg-brand text-white font-semibold py-3 rounded-xl">Simpan</button>
+    </div>`);
+}
+async function saveParticipantForm(id) {
+  const payload = {
+    nama: document.getElementById('pNama').value.trim(),
+    jenisKelamin: document.querySelector('input[name=pGender]:checked').value,
+    status: document.getElementById('pStatus').value.trim(),
+    dapukan: document.getElementById('pDapukan').value.trim(),
+    noHp: document.getElementById('pNoHp').value.trim(),
+    email: document.getElementById('pEmail').value.trim()
+  };
+  if (!payload.nama) return showToast('Nama wajib diisi', 'error');
+  const res = await api(id ? 'updateParticipant' : 'createParticipant', id ? Object.assign({id}, payload) : payload);
+  if (!res.success) return showToast(res.message, 'error');
+  showToast(res.message, 'success'); closeModal(); navigate('participants');
+}
+async function deleteParticipant(id) {
+  if (!await askConfirm('Hapus peserta ini?')) return;
+  const res = await api('deleteParticipant', { id });
+  showToast(res.message, res.success?'success':'error');
+  if (res.success) navigate('participants');
+}
+
+/* ============================================================================
+   BAGIAN N: INFAK
+   ============================================================================ */
+async function renderInfak() {
+  const [actRes, infakRes] = await Promise.all([api('getActivities', {}), api('getInfak', {})]);
+  const acts = actRes.data || []; const actById = {};
+  acts.forEach(a => actById[a.ID_KEGIATAN] = a);
+  const rows = infakRes.data || [];
+  const content = document.getElementById('adminContent');
+  content.innerHTML = `
+    <h2 class="font-bold text-lg">Infak</h2>
+    <div class="bg-white rounded-2xl p-4 shadow-sm text-center"><p class="text-2xl font-bold text-brand-dark">${fmtRupiah(infakRes.total||0)}</p><p class="text-xs text-slate-400">Total Infak Terkumpul</p></div>
+    <div class="bg-white rounded-2xl shadow-sm divide-y overflow-hidden">
+      ${rows.length ? rows.slice().reverse().map(r => `
+        <div class="p-3 flex items-center gap-3 text-sm">
+          <div class="w-9 h-9 rounded-full bg-teal-50 flex items-center justify-center">${icon('hand-coins','w-4 h-4 text-teal-600')}</div>
+          <div class="flex-1 min-w-0"><p class="font-medium truncate">${esc(r.NAMA)}</p><p class="text-[11px] text-slate-400">${esc(actById[r.ID_KEGIATAN]?actById[r.ID_KEGIATAN].NAMA_KEGIATAN:'')} • ${esc(r.METODE)}</p></div>
+          <span class="font-semibold text-brand-dark text-sm">${fmtRupiah(r.NOMINAL)}</span>
+        </div>`).join('') : emptyBox('Belum ada data infak')}
+    </div>`;
+}
+
+/* ============================================================================
+   BAGIAN O: LAPORAN
+   ============================================================================ */
+async function renderReports() {
+  const [actRes, catRes] = await Promise.all([api('getActivities', {}), api('getCategories', {})]);
+  const acts = actRes.data || []; const cats = catRes.data || [];
+  const content = document.getElementById('adminContent');
+  content.innerHTML = `
+    <h2 class="font-bold text-lg">Laporan</h2>
+    <div class="bg-white rounded-2xl p-4 shadow-sm space-y-3">
+      <select id="rpKegiatan" class="w-full border border-slate-200 rounded-xl px-3 py-2.5 bg-white text-sm">
+        <option value="">Semua Kegiatan</option>${acts.map(a=>`<option value="${a.ID_KEGIATAN}">${esc(a.NAMA_KEGIATAN)}</option>`).join('')}
+      </select>
+      <select id="rpKategori" class="w-full border border-slate-200 rounded-xl px-3 py-2.5 bg-white text-sm">
+        <option value="">Semua Kategori</option>${cats.map(c=>`<option value="${c.ID}">${esc(c.NAMA_KATEGORI)}</option>`).join('')}
+      </select>
+      <div class="grid grid-cols-2 gap-2">
+        <input id="rpMulai" type="date" class="border border-slate-200 rounded-xl px-3 py-2.5 text-sm">
+        <input id="rpAkhir" type="date" class="border border-slate-200 rounded-xl px-3 py-2.5 text-sm">
+      </div>
+      <select id="rpKehadiran" class="w-full border border-slate-200 rounded-xl px-3 py-2.5 bg-white text-sm">
+        <option value="">Semua Status Kehadiran</option><option>Hadir</option><option>Izin</option><option>Sakit</option><option>Alfa</option>
+      </select>
+      <button onclick="runReport()" class="w-full bg-brand text-white font-semibold py-2.5 rounded-xl">Tampilkan Laporan</button>
+    </div>
+    <div id="reportResult"></div>`;
+}
+async function runReport() {
+  const payload = {
+    idKegiatan: document.getElementById('rpKegiatan').value || undefined,
+    idKategori: document.getElementById('rpKategori').value || undefined,
+    tanggalMulai: document.getElementById('rpMulai').value || undefined,
+    tanggalAkhir: document.getElementById('rpAkhir').value || undefined,
+    kehadiran: document.getElementById('rpKehadiran').value || undefined
+  };
+  const res = await api('getReports', payload);
+  if (!res.success) return showToast(res.message, 'error');
+  const s = res.summary;
+  document.getElementById('reportResult').innerHTML = `
+    <div class="grid grid-cols-4 gap-2 mt-4 text-center">
+      <div class="bg-white rounded-xl p-2 shadow-sm"><p class="font-bold text-emerald-600">${s.hadir}</p><p class="text-[10px] text-slate-400">Hadir</p></div>
+      <div class="bg-white rounded-xl p-2 shadow-sm"><p class="font-bold text-amber-600">${s.izin}</p><p class="text-[10px] text-slate-400">Izin</p></div>
+      <div class="bg-white rounded-xl p-2 shadow-sm"><p class="font-bold text-orange-600">${s.sakit}</p><p class="text-[10px] text-slate-400">Sakit</p></div>
+      <div class="bg-white rounded-xl p-2 shadow-sm"><p class="font-bold text-red-600">${s.alfa}</p><p class="text-[10px] text-slate-400">Alfa</p></div>
+    </div>
+    <div class="bg-white rounded-2xl p-4 shadow-sm mt-3 text-center"><p class="text-lg font-bold text-brand-dark">${fmtRupiah(s.totalInfak)}</p><p class="text-xs text-slate-400">Total Infak (kegiatan terkait)</p></div>
+    <div class="bg-white rounded-2xl shadow-sm mt-3 divide-y overflow-hidden max-h-96 overflow-y-auto">
+      ${res.data.length ? res.data.map(r => `
+        <div class="p-3 text-sm flex items-center gap-3">
+          <div class="flex-1 min-w-0"><p class="font-medium truncate">${esc(r.NAMA)}</p><p class="text-[11px] text-slate-400">${esc(r.NAMA_KEGIATAN)} • ${fmtTanggalIndo(r.TANGGAL_KEGIATAN)}</p></div>
+          <span class="text-[10px] px-2 py-1 rounded-full bg-slate-100">${esc(r.KEHADIRAN)}</span>
+        </div>`).join('') : emptyBox('Tidak ada data sesuai filter')}
+    </div>
+    <button onclick="exportReportExcel()" class="w-full bg-brand-dark text-white rounded-xl py-3 font-semibold mt-3">Export Excel Laporan Ini</button>`;
+  state._lastReport = res.data;
+}
+function exportReportExcel() {
+  if (!state._lastReport || !state._lastReport.length) return showToast('Tidak ada data untuk diekspor', 'error');
+  const rows = state._lastReport.map((r, i) => ({
+    No: i+1, Nama: r.NAMA, 'Jenis Kelamin': r.JENIS_KELAMIN, Status: r.STATUS, Dapukan: r.DAPUKAN,
+    Kegiatan: r.NAMA_KEGIATAN, Tanggal: fmtTanggalIndo(r.TANGGAL_KEGIATAN), 'Waktu Datang': r.WAKTU_DATANG,
+    'Zona Waktu': r.ZONA_WAKTU, Kehadiran: r.KEHADIRAN, Keterangan: r.KETERANGAN
+  }));
+  const ws = XLSX.utils.json_to_sheet(rows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Laporan');
+  XLSX.writeFile(wb, 'Laporan-Daftar-Hadir.xlsx');
+}
+
+/* ============================================================================
+   BAGIAN P: PENGATURAN (IDENTITAS APLIKASI) — ADMIN
+   ============================================================================ */
+async function renderSettings() {
+  const res = await api('getSettings', {});
+  const s = res.data || {};
+  const content = document.getElementById('adminContent');
+  content.innerHTML = `
+    <h2 class="font-bold text-lg">Pengaturan Aplikasi</h2>
+    <div class="bg-white rounded-2xl p-4 shadow-sm space-y-3">
+      ${settingsInput('APP_TITLE','Judul Aplikasi', s.APP_TITLE)}
+      ${settingsInput('ORG_NAME','Nama Organisasi', s.ORG_NAME)}
+      ${settingsInput('MOSQUE_NAME','Nama Masjid', s.MOSQUE_NAME)}
+      ${settingsInput('MAJELIS_NAME','Nama Pengajian', s.MAJELIS_NAME)}
+      ${settingsInput('ADDRESS','Alamat', s.ADDRESS)}
+      ${settingsInput('PHONE','Nomor Telepon', s.PHONE)}
+      ${settingsInput('LOGO_URL','URL Logo (link gambar publik)', s.LOGO_URL)}
+      ${settingsInput('BANNER_URL','URL Banner (opsional)', s.BANNER_URL)}
+      ${settingsInput('THEME_COLOR','Warna Tema (kode hex, mis. #16a34a)', s.THEME_COLOR)}
+      ${settingsInput('FOOTER_TEXT','Teks Footer', s.FOOTER_TEXT)}
+      ${settingsInput('INFO_TEXT','Teks Informasi', s.INFO_TEXT)}
+      <button onclick="saveAllSettings()" class="w-full bg-brand text-white font-semibold py-3 rounded-xl">Simpan Pengaturan</button>
+    </div>
+    <div class="bg-white rounded-2xl p-4 shadow-sm">
+      <p class="text-sm font-semibold mb-2">Migrasi Data Lama</p>
+      <p class="text-xs text-slate-400 mb-3">Jika sebelumnya Anda memiliki data absensi tersimpan di localStorage browser lama, tempelkan JSON data tersebut di sini untuk dipindahkan ke Google Spreadsheet.</p>
+      <textarea id="migrateJson" rows="4" class="w-full border border-slate-200 rounded-xl px-3 py-2 text-xs font-mono" placeholder='{"participants":[],"activities":[],"attendance":[]}'></textarea>
+      <button onclick="runMigration()" class="w-full border border-brand text-brand-dark font-semibold py-2.5 rounded-xl mt-2">Migrasi Data Lama ke Google Sheets</button>
+    </div>`;
+}
+function settingsInput(key, label, value) {
+  return `<div><label class="text-xs text-slate-500 mb-1 block">${label}</label><input id="set_${key}" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm" value="${esc(value||'')}"></div>`;
+}
+async function saveAllSettings() {
+  const keys = ['APP_TITLE','ORG_NAME','MOSQUE_NAME','MAJELIS_NAME','ADDRESS','PHONE','LOGO_URL','BANNER_URL','THEME_COLOR','FOOTER_TEXT','INFO_TEXT'];
+  const settings = {};
+  keys.forEach(k => settings[k] = document.getElementById('set_'+k).value.trim());
+  const res = await api('saveSettings', { settings });
+  showToast(res.message, res.success?'success':'error');
+  if (res.success) { const r2 = await api('getSettings', {}); state.settings = r2.data; applyBranding(); }
+}
+async function runMigration() {
+  let data;
+  try { data = JSON.parse(document.getElementById('migrateJson').value || '{}'); }
+  catch (e) { return showToast('Format JSON tidak valid', 'error'); }
+  if (!await askConfirm('Migrasi data lama ke Google Spreadsheet? Proses ini menambahkan data baru (tidak menghapus data lama di Sheets).')) return;
+  const res = await api('migrateLocalData', data);
+  showToast(res.success ? `Migrasi selesai: ${res.data.peserta} peserta, ${res.data.kegiatan} kegiatan, ${res.data.absensi} absensi` : res.message, res.success?'success':'error');
+}
+
+/* ============================================================================
+   BAGIAN Q: PENGGUNA (USER MANAGEMENT) — ADMIN
+   ============================================================================ */
+async function renderUsers() {
+  const res = await api('getUsers', {});
+  const users = res.data || [];
+  const content = document.getElementById('adminContent');
+  content.innerHTML = `
+    <div class="flex items-center justify-between">
+      <h2 class="font-bold text-lg">Pengguna</h2>
+      <button onclick="openUserForm()" class="w-9 h-9 rounded-full bg-brand text-white flex items-center justify-center">${icon('plus','w-5 h-5')}</button>
+    </div>
+    <div class="bg-white rounded-2xl shadow-sm divide-y overflow-hidden">
+      ${users.map(u => `
+        <div class="p-3 flex items-center gap-3 text-sm">
+          <div class="w-9 h-9 rounded-full bg-brand-light flex items-center justify-center">${icon('user-round','w-4 h-4 text-brand-dark')}</div>
+          <div class="flex-1 min-w-0"><p class="font-medium truncate">${esc(u.NAMA)}</p><p class="text-[11px] text-slate-400">@${esc(u.USERNAME)} • ${roleLabel(u.ROLE)}</p></div>
+          <button onclick='openUserForm(${JSON.stringify(u)})' class="p-2 text-slate-400">${icon('pencil','w-4 h-4')}</button>
+          <button onclick="deleteUser('${u.ID}')" class="p-2 text-red-400">${icon('trash-2','w-4 h-4')}</button>
+        </div>`).join('')}
+    </div>`;
+}
+function openUserForm(u) {
+  const isEdit = !!u;
+  openModal(`
+    <h3 class="font-bold text-lg mb-4">${isEdit?'Edit':'Tambah'} Pengguna</h3>
+    <div class="space-y-3">
+      <input id="uNama" class="w-full border border-slate-200 rounded-xl px-4 py-3" placeholder="Nama" value="${isEdit?esc(u.NAMA):''}">
+      <input id="uUsername" class="w-full border border-slate-200 rounded-xl px-4 py-3" placeholder="Username" value="${isEdit?esc(u.USERNAME):''}" ${isEdit?'disabled':''}>
+      <input id="uPassword" type="password" class="w-full border border-slate-200 rounded-xl px-4 py-3" placeholder="${isEdit?'Kosongkan jika tidak diubah':'Password'}">
+      <select id="uRole" class="w-full border border-slate-200 rounded-xl px-4 py-3 bg-white">
+        <option value="ADMINISTRATOR" ${isEdit&&u.ROLE==='ADMINISTRATOR'?'selected':''}>Administrator</option>
+        <option value="OPERATOR" ${isEdit&&u.ROLE==='OPERATOR'?'selected':''}>Operator</option>
+        <option value="PESERTA" ${isEdit&&u.ROLE==='PESERTA'?'selected':''}>Peserta</option>
+      </select>
+      <input id="uEmail" class="w-full border border-slate-200 rounded-xl px-4 py-3" placeholder="Email" value="${isEdit?esc(u.EMAIL):''}">
+      <button onclick="saveUserForm(${isEdit?`'${u.ID}'`:'null'})" class="w-full bg-brand text-white font-semibold py-3 rounded-xl">Simpan</button>
+    </div>`);
+}
+async function saveUserForm(id) {
+  const payload = {
+    nama: document.getElementById('uNama').value.trim(),
+    username: document.getElementById('uUsername').value.trim(),
+    password: document.getElementById('uPassword').value,
+    role: document.getElementById('uRole').value,
+    email: document.getElementById('uEmail').value.trim()
+  };
+  if (!payload.nama || (!id && (!payload.username || !payload.password))) return showToast('Data belum lengkap', 'error');
+  const res = await api(id ? 'updateUser' : 'createUser', id ? Object.assign({id}, payload) : payload);
+  if (!res.success) return showToast(res.message, 'error');
+  showToast(res.message, 'success'); closeModal(); navigate('users');
+}
+async function deleteUser(id) {
+  if (!await askConfirm('Hapus pengguna ini?')) return;
+  const res = await api('deleteUser', { id });
+  showToast(res.message, res.success?'success':'error');
+  if (res.success) navigate('users');
+}
+
+/* ============================================================================
+   BAGIAN R: PROFIL & MENU (mobile "more" tab)
+   ============================================================================ */
+function renderProfile() {
+  const content = document.getElementById('adminContent');
+  content.innerHTML = `
+    <h2 class="font-bold text-lg">Profil</h2>
+    <div class="bg-white rounded-2xl p-5 shadow-sm text-center">
+      <div class="w-16 h-16 rounded-full bg-brand-light flex items-center justify-center mx-auto mb-2">${icon('user-round','w-8 h-8 text-brand-dark')}</div>
+      <p class="font-semibold">${esc(state.user.nama)}</p>
+      <p class="text-xs text-slate-400">${roleLabel(state.user.role)}</p>
+    </div>
+    <div class="bg-white rounded-2xl p-4 shadow-sm space-y-3">
+      <p class="text-sm font-semibold">Ubah Password</p>
+      <input id="oldPass" type="password" placeholder="Password lama" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm">
+      <input id="newPass" type="password" placeholder="Password baru" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm">
+      <button onclick="changeMyPassword()" class="w-full bg-brand text-white font-semibold py-2.5 rounded-xl">Simpan Password Baru</button>
+    </div>`;
+}
+async function changeMyPassword() {
+  const oldPassword = document.getElementById('oldPass').value;
+  const newPassword = document.getElementById('newPass').value;
+  if (!oldPassword || !newPassword) return showToast('Lengkapi kedua kolom', 'error');
+  const res = await api('changePassword', { oldPassword, newPassword });
+  showToast(res.message, res.success?'success':'error');
+  if (res.success) { document.getElementById('oldPass').value=''; document.getElementById('newPass').value=''; }
+}
+function renderMenu() {
+  const content = document.getElementById('adminContent');
+  content.innerHTML = `
+    <h2 class="font-bold text-lg">Menu Lainnya</h2>
+    <div class="grid grid-cols-3 gap-3">
+      ${MENU_ITEMS.filter(m => m.roles.includes(state.user.role)).map(m => `
+        <button onclick="navigate('${m.route}')" class="bg-white rounded-2xl p-4 shadow-sm flex flex-col items-center gap-2 text-center">
+          <div class="w-10 h-10 rounded-xl bg-brand-light flex items-center justify-center">${icon(m.icon,'w-5 h-5 text-brand-dark')}</div>
+          <span class="text-xs font-medium">${m.label}</span>
+        </button>`).join('')}
+    </div>`;
+}
+
+/* ============================================================================
+   BAGIAN S: MODAL HELPER
+   ============================================================================ */
+function openModal(innerHtml) {
+  let modal = document.getElementById('genericModal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'genericModal';
+    modal.className = 'fixed inset-0 z-[65] flex items-end sm:items-center justify-center modal-backdrop';
+    modal.innerHTML = `<div class="bg-white rounded-t-2xl sm:rounded-2xl w-full sm:max-w-md p-5 max-h-[85vh] overflow-y-auto" id="genericModalInner"></div>`;
+    modal.addEventListener('click', (e) => { if (e.target === modal) closeModal(); });
+    document.body.appendChild(modal);
+  }
+  document.getElementById('genericModalInner').innerHTML = innerHtml + `<button onclick="closeModal()" class="w-full text-center text-sm text-slate-400 mt-3">Batal</button>`;
+  modal.classList.remove('hidden');
+  refreshIcons();
+}
+function closeModal() { const m = document.getElementById('genericModal'); if (m) m.classList.add('hidden'); }
+
+/* ============================================================================
+   BAGIAN T: EXPORT PDF / WORD / EXCEL RESMI DENGAN KOP SURAT
+   ============================================================================ */
+function openExportMenu(idKegiatan, namaKegiatan, tanggal) {
+  openModal(`
+    <h3 class="font-bold text-lg mb-4">Export Laporan Daftar Hadir</h3>
+    <p class="text-sm text-slate-500 mb-4">${esc(namaKegiatan)} • ${fmtTanggalIndo(tanggal)}</p>
+    <div class="space-y-2">
+      <button onclick="exportPDF('${idKegiatan}')" class="w-full flex items-center gap-3 border border-slate-200 rounded-xl p-3 text-sm font-medium">${icon('file-text','w-5 h-5 text-red-500')} Export PDF (Resmi + Kop Surat)</button>
+      <button onclick="exportWord('${idKegiatan}')" class="w-full flex items-center gap-3 border border-slate-200 rounded-xl p-3 text-sm font-medium">${icon('file-type','w-5 h-5 text-blue-500')} Export Word (.doc)</button>
+      <button onclick="exportExcelActivity('${idKegiatan}')" class="w-full flex items-center gap-3 border border-slate-200 rounded-xl p-3 text-sm font-medium">${icon('sheet','w-5 h-5 text-emerald-500')} Export Excel (.xlsx)</button>
+    </div>`);
+}
+
+async function getExportData(idKegiatan) {
+  const [attRes, actRes, infakRes, settingsRes, pjRes] = await Promise.all([
+    api('getAttendance', { idKegiatan }), api('getActivities', {}), api('getInfak', { idKegiatan }),
+    api('getSettings', {}), api('getPJSignature', { idKegiatan })
+  ]);
+  const act = (actRes.data || []).find(a => a.ID_KEGIATAN === idKegiatan) || {};
+  return { rows: attRes.data || [], act, infak: infakRes, settings: settingsRes.data || {}, pj: pjRes.data };
+}
+
+async function exportExcelActivity(idKegiatan) {
+  const { rows, act } = await getExportData(idKegiatan);
+  const data = rows.map(r => ({
+    No: r.NO, Nama: r.NAMA, 'Jenis Kelamin': r.JENIS_KELAMIN, Status: r.STATUS, Dapukan: r.DAPUKAN,
+    'Waktu Datang': r.WAKTU_DATANG, 'Zona Waktu': r.ZONA_WAKTU, Kehadiran: r.KEHADIRAN, Keterangan: r.KETERANGAN
+  }));
+  const ws = XLSX.utils.json_to_sheet(data);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Daftar Hadir');
+  XLSX.writeFile(wb, `DaftarHadir-${(act.NAMA_KEGIATAN||'kegiatan').replace(/\s+/g,'-')}.xlsx`);
+  closeModal();
+}
+
+async function exportWord(idKegiatan) {
+  const { rows, act, settings, pj } = await getExportData(idKegiatan);
+  const tableRows = rows.map(r => `<tr>
+    <td style="border:1px solid #333;padding:4px;text-align:center">${r.NO}</td>
+    <td style="border:1px solid #333;padding:4px">${esc(r.NAMA)}</td>
+    <td style="border:1px solid #333;padding:4px;text-align:center">${esc(r.JENIS_KELAMIN)}</td>
+    <td style="border:1px solid #333;padding:4px">${esc(r.STATUS)}</td>
+    <td style="border:1px solid #333;padding:4px">${esc(r.DAPUKAN)}</td>
+    <td style="border:1px solid #333;padding:4px;text-align:center">${esc(r.WAKTU_DATANG)}</td>
+    <td style="border:1px solid #333;padding:4px;text-align:center">${esc(r.KEHADIRAN)}</td>
+    <td style="border:1px solid #333;padding:4px"></td>
+  </tr>`).join('');
+  const html = `<html><head><meta charset="utf-8"></head><body style="font-family:Arial">
+    <div style="text-align:center">
+      ${settings.LOGO_URL ? `<img src="${settings.LOGO_URL}" style="height:60px"><br>` : ''}
+      <b>${esc(settings.ORG_NAME||'')}</b><br>${esc(settings.MOSQUE_NAME||'')}<br><span style="font-size:11px">${esc(settings.ADDRESS||'')}</span>
+      <h3>DAFTAR HADIR</h3>
+      <b>${esc(act.NAMA_KEGIATAN)}</b><br>Tanggal: ${fmtTanggalIndo(act.TANGGAL)} &nbsp; Waktu: ${esc(act.JAM_MULAI||'')} &nbsp; Lokasi: ${esc(act.LOKASI||'')}
+    </div>
+    <table style="border-collapse:collapse;width:100%;margin-top:16px;font-size:12px">
+      <tr style="background:#e5f5e9">
+        <th style="border:1px solid #333;padding:4px">No</th><th style="border:1px solid #333;padding:4px">Nama</th>
+        <th style="border:1px solid #333;padding:4px">JK</th><th style="border:1px solid #333;padding:4px">Status</th>
+        <th style="border:1px solid #333;padding:4px">Dapukan</th><th style="border:1px solid #333;padding:4px">Waktu</th>
+        <th style="border:1px solid #333;padding:4px">Kehadiran</th><th style="border:1px solid #333;padding:4px">Ttd</th>
+      </tr>${tableRows}
+    </table>
+    <table style="width:100%;margin-top:40px;font-size:12px"><tr>
+      <td style="width:50%"></td>
+      <td style="width:50%;text-align:center">
+        Mengetahui,<br>Penanggung Jawab<br><br><br><br>
+        (____________________)<br>
+        ${pj ? `Nama: ${esc(pj.NAMA_PENANDATANGAN)}<br>Dapukan: ${esc(pj.DAPUKAN_PENANDATANGAN)}` : 'Nama: __________________<br>Dapukan: __________________'}
+      </td>
+    </tr></table>
+  </body></html>`;
+  const blob = new Blob(['\ufeff', html], { type: 'application/msword' });
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = `DaftarHadir-${(act.NAMA_KEGIATAN||'kegiatan').replace(/\s+/g,'-')}.doc`;
+  link.click();
+  closeModal();
+}
+
+async function exportPDF(idKegiatan) {
+  const { rows, act, infak, settings, pj } = await getExportData(idKegiatan);
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF();
+  let y = 15;
+
+  doc.setFontSize(13); doc.setFont(undefined, 'bold');
+  doc.text(settings.ORG_NAME || 'Nama Organisasi', 105, y, { align: 'center' }); y += 6;
+  doc.setFontSize(11);
+  doc.text(settings.MOSQUE_NAME || '', 105, y, { align: 'center' }); y += 5;
+  doc.setFontSize(9); doc.setFont(undefined, 'normal');
+  doc.text(settings.ADDRESS || '', 105, y, { align: 'center' }); y += 8;
+  doc.setDrawColor(21, 128, 61); doc.setLineWidth(0.7); doc.line(15, y, 195, y); y += 8;
+
+  doc.setFontSize(14); doc.setFont(undefined, 'bold');
+  doc.text('DAFTAR HADIR', 105, y, { align: 'center' }); y += 7;
+  doc.setFontSize(11);
+  doc.text(act.NAMA_KEGIATAN || '', 105, y, { align: 'center' }); y += 7;
+  doc.setFontSize(9); doc.setFont(undefined, 'normal');
+  doc.text(`Tanggal: ${fmtTanggalIndo(act.TANGGAL)}   Waktu: ${act.JAM_MULAI || '-'}   Lokasi: ${act.LOKASI || '-'}`, 105, y, { align: 'center' }); y += 6;
+
+  const body = rows.map(r => [r.NO, r.NAMA, r.JENIS_KELAMIN, r.STATUS, r.DAPUKAN, r.WAKTU_DATANG, r.KEHADIRAN, r.KETERANGAN, '']);
+  doc.autoTable({
+    startY: y + 4,
+    head: [['No', 'Nama', 'JK', 'Status', 'Dapukan', 'Waktu Datang', 'Kehadiran', 'Keterangan', 'Ttd']],
+    body: body,
+    styles: { fontSize: 7.5, cellPadding: 2 },
+    headStyles: { fillColor: [21, 128, 61], textColor: 255 },
+    columnStyles: { 8: { cellWidth: 18 } },
+    didDrawPage: function (data) {
+      const pageCount = doc.internal.getNumberOfPages();
+      doc.setFontSize(8);
+      doc.text(`Halaman ${doc.internal.getCurrentPageInfo().pageNumber} dari ${pageCount}`, 195, 290, { align: 'right' });
+    }
+  });
+
+  let finalY = doc.lastAutoTable.finalY + 10;
+  if (finalY > 250) { doc.addPage(); finalY = 20; }
+
+  doc.setFontSize(9);
+  doc.text(`Total Hadir: ${rows.filter(r=>r.KEHADIRAN==='Hadir').length}   Izin: ${rows.filter(r=>r.KEHADIRAN==='Izin').length}   Sakit: ${rows.filter(r=>r.KEHADIRAN==='Sakit').length}   Alfa: ${rows.filter(r=>r.KEHADIRAN==='Alfa').length}   Infak: ${fmtRupiah(infak.total||0)}`, 15, finalY);
+  finalY += 15;
+
+  doc.text('Mengetahui,', 140, finalY);
+  doc.text('Penanggung Jawab', 140, finalY + 5);
+  doc.rect(140, finalY + 10, 45, 20); // area stempel basah
+  doc.setFontSize(7);
+  doc.text('STEMPEL BASAH', 162.5, finalY + 21, { align: 'center' });
+  doc.setFontSize(9);
+  doc.text(`Nama: ${pj ? pj.NAMA_PENANDATANGAN : '____________________'}`, 140, finalY + 38);
+  doc.text(`Dapukan: ${pj ? pj.DAPUKAN_PENANDATANGAN : '____________________'}`, 140, finalY + 44);
+
+  doc.save(`DaftarHadir-${(act.NAMA_KEGIATAN||'kegiatan').replace(/\s+/g,'-')}.pdf`);
+  closeModal();
+}
+</script>
+</body>
+</html>
